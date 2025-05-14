@@ -2,7 +2,6 @@
 
 A decentralized voting application built with React, Vite, and Ethereum smart contracts that enables users to create proposals, vote, and participate in decentralized decision-making.
 
-![MiniVoteDAO Platform](https://cdn.pixabay.com/photo/2018/05/17/21/26/blockchain-3409642_1280.jpg)
 
 ## Features
 
@@ -73,13 +72,3 @@ The application interacts with a deployed MiniVoteDAO smart contract that implem
     /lib         # Utility functions
     /pages       # Application pages
 /server         # Express server for hosting the app
-/shared         # Shared types and schemas
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
