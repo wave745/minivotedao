@@ -1,0 +1,609 @@
+MiniVoteDAO React + Vite Project Setup
+I'll guide you through creating a React + Vite project with TailwindCSS that connects to a Solidity smart contract (MiniVoteDAO) using Ethers.js.
+
+1. Project Setup
+First, create a new Vite + React project with TypeScript (optional):
+
+bash
+npm create vite@latest minivote-dao -- --template react-ts
+cd minivote-dao
+Install dependencies:
+
+bash
+npm install ethers @metamask/providers @heroicons/react react-hot-toast
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+2. Configure TailwindCSS
+Update tailwind.config.js:
+
+javascript
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  darkMode: 'class',
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+Add Tailwind directives to src/index.css:
+
+css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-900 text-gray-100;
+}
+3. Folder Structure
+Create the following folders:
+
+/src/
+  /components/
+  /abi/
+  /utils/
+  /pages/
+4. Main App Structure
+Update src/App.tsx:
+
+tsx
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
+import Home from './pages/Home'
+import Navbar from './components/Navbar'
+
+function App() {
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-gray-900">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <Routes>
+            <Route path="/" element={<Home />} />
+          </Routes>
+        </div>
+        <Toaster position="bottom-right" />
+      </div>
+    </BrowserRouter>
+  )
+}
+
+export default App
+5. Wallet Connection (Ethers.js)
+Create src/utils/wallet.ts:
+
+typescript
+import { ethers } from 'ethers'
+import { toast } from 'react-hot-toast'
+
+declare global {
+  interface Window {
+    ethereum?: any
+  }
+}
+
+export const connectWallet = async () => {
+  if (!window.ethereum) {
+    toast.error('MetaMask not detected!')
+    return null
+  }
+
+  try {
+    const provider = new ethers.BrowserProvider(window.ethereum)
+    await provider.send("eth_requestAccounts", [])
+    const signer = await provider.getSigner()
+    const address = await signer.getAddress()
+    
+    toast.success(`Connected to ${address.slice(0, 6)}...${address.slice(-4)}`)
+    return { provider, signer, address }
+  } catch (error) {
+    toast.error('Error connecting to MetaMask')
+    console.error(error)
+    return null
+  }
+}
+
+export const getContract = (address: string, abi: any, signer: ethers.Signer) => {
+  return new ethers.Contract(address, abi, signer)
+}
+6. Contract Interaction Utilities
+Create src/utils/contract.ts:
+
+typescript
+import { ethers } from 'ethers'
+import { toast } from 'react-hot-toast'
+import MiniVoteDAOABI from '../abi/MiniVoteDAO.json'
+
+const CONTRACT_ADDRESS = '0x...' // Replace with your contract address
+
+export const loadProposals = async (contract: ethers.Contract) => {
+  try {
+    const proposalCount = await contract.proposalCount()
+    const proposals = []
+    
+    for (let i = 0; i < proposalCount; i++) {
+      const proposal = await contract.proposals(i)
+      proposals.push({
+        id: i,
+        title: proposal.title,
+        description: proposal.description,
+        yesVotes: proposal.yesVotes.toString(),
+        noVotes: proposal.noVotes.toString(),
+        deadline: new Date(Number(proposal.deadline) * 1000),
+        executed: proposal.executed,
+        passed: proposal.passed
+      })
+    }
+    
+    return proposals
+  } catch (error) {
+    toast.error('Failed to load proposals')
+    console.error(error)
+    return []
+  }
+}
+
+export const createProposal = async (
+  contract: ethers.Contract, 
+  title: string, 
+  description: string,
+  deadline: number // in days
+) => {
+  try {
+    const tx = await contract.createProposal(
+      title,
+      description,
+      Math.floor(Date.now() / 1000) + deadline * 86400
+    )
+    await tx.wait()
+    toast.success('Proposal created successfully!')
+    return true
+  } catch (error) {
+    toast.error('Failed to create proposal')
+    console.error(error)
+    return false
+  }
+}
+
+export const voteOnProposal = async (
+  contract: ethers.Contract,
+  proposalId: number,
+  vote: boolean // true = yes, false = no
+) => {
+  try {
+    const tx = await contract.vote(proposalId, vote)
+    await tx.wait()
+    toast.success(`Voted ${vote ? 'YES' : 'NO'} on proposal!`)
+    return true
+  } catch (error) {
+    toast.error('Failed to vote')
+    console.error(error)
+    return false
+  }
+}
+
+export const finalizeProposal = async (
+  contract: ethers.Contract,
+  proposalId: number
+) => {
+  try {
+    const tx = await contract.finalizeProposal(proposalId)
+    await tx.wait()
+    toast.success('Proposal finalized!')
+    return true
+  } catch (error) {
+    toast.error('Failed to finalize proposal')
+    console.error(error)
+    return false
+  }
+}
+7. Components
+Create src/components/Navbar.tsx:
+
+tsx
+import { useState } from 'react'
+import { connectWallet } from '../utils/wallet'
+import { toast } from 'react-hot-toast'
+
+export default function Navbar() {
+  const [address, setAddress] = useState<string | null>(null)
+
+  const handleConnect = async () => {
+    const connection = await connectWallet()
+    if (connection) {
+      setAddress(connection.address)
+    }
+  }
+
+  return (
+    <nav className="bg-gray-800 p-4">
+      <div className="container mx-auto flex justify-between items-center">
+        <h1 className="text-xl font-bold">MiniVoteDAO</h1>
+        <button
+          onClick={handleConnect}
+          className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md"
+        >
+          {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect Wallet'}
+        </button>
+      </div>
+    </nav>
+  )
+}
+Create src/components/ProposalCard.tsx:
+
+tsx
+import { ethers } from 'ethers'
+import { ArrowPathIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { toast } from 'react-hot-toast'
+import { voteOnProposal, finalizeProposal } from '../utils/contract'
+
+interface ProposalCardProps {
+  proposal: {
+    id: number
+    title: string
+    description: string
+    yesVotes: string
+    noVotes: string
+    deadline: Date
+    executed: boolean
+    passed: boolean
+  }
+  contract: ethers.Contract | null
+  isOwner: boolean
+  refresh: () => void
+}
+
+export default function ProposalCard({ proposal, contract, isOwner, refresh }: ProposalCardProps) {
+  const isActive = new Date() < proposal.deadline && !proposal.executed
+  const status = proposal.executed 
+    ? 'Finalized' 
+    : isActive 
+      ? 'Active' 
+      : proposal.passed 
+        ? 'Passed' 
+        : 'Failed'
+
+  const statusColor = {
+    Active: 'bg-blue-500',
+    Passed: 'bg-green-500',
+    Failed: 'bg-red-500',
+    Finalized: 'bg-purple-500'
+  }[status]
+
+  const handleVote = async (vote: boolean) => {
+    if (!contract) {
+      toast.error('Wallet not connected')
+      return
+    }
+    const success = await voteOnProposal(contract, proposal.id, vote)
+    if (success) refresh()
+  }
+
+  const handleFinalize = async () => {
+    if (!contract) {
+      toast.error('Wallet not connected')
+      return
+    }
+    const success = await finalizeProposal(contract, proposal.id)
+    if (success) refresh()
+  }
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6 mb-4">
+      <div className="flex justify-between items-start">
+        <h3 className="text-xl font-bold mb-2">{proposal.title}</h3>
+        <span className={`${statusColor} text-white text-xs px-2 py-1 rounded-full`}>
+          {status}
+        </span>
+      </div>
+      <p className="text-gray-300 mb-4">{proposal.description}</p>
+      
+      <div className="flex justify-between items-center mb-4">
+        <div className="text-green-400">
+          Yes: {ethers.formatUnits(proposal.yesVotes, 18)}
+        </div>
+        <div className="text-red-400">
+          No: {ethers.formatUnits(proposal.noVotes, 18)}
+        </div>
+        <div className="text-gray-400 text-sm">
+          Deadline: {proposal.deadline.toLocaleString()}
+        </div>
+      </div>
+
+      {isActive && (
+        <div className="flex space-x-2">
+          <button
+            onClick={() => handleVote(true)}
+            className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded flex items-center"
+          >
+            <CheckIcon className="h-4 w-4 mr-1" /> Vote Yes
+          </button>
+          <button
+            onClick={() => handleVote(false)}
+            className="bg-red-600 hover:bg-red-700 px-3 py-1 rounded flex items-center"
+          >
+            <XMarkIcon className="h-4 w-4 mr-1" /> Vote No
+          </button>
+        </div>
+      )}
+
+      {!proposal.executed && !isActive && isOwner && (
+        <button
+          onClick={handleFinalize}
+          className="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded flex items-center"
+        >
+          <ArrowPathIcon className="h-4 w-4 mr-1" /> Finalize
+        </button>
+      )}
+    </div>
+  )
+}
+Create src/components/CreateProposalModal.tsx:
+
+tsx
+import { useState } from 'react'
+import { ethers } from 'ethers'
+import { createProposal } from '../utils/contract'
+import { toast } from 'react-hot-toast'
+
+interface CreateProposalModalProps {
+  isOpen: boolean
+  onClose: () => void
+  contract: ethers.Contract | null
+  refresh: () => void
+}
+
+export default function CreateProposalModal({ 
+  isOpen, 
+  onClose, 
+  contract, 
+  refresh 
+}: CreateProposalModalProps) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [deadline, setDeadline] = useState(7) // default 7 days
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!contract) {
+      toast.error('Wallet not connected')
+      return
+    }
+    
+    const success = await createProposal(contract, title, description, deadline)
+    if (success) {
+      setTitle('')
+      setDescription('')
+      setDeadline(7)
+      onClose()
+      refresh()
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+        <h2 className="text-xl font-bold mb-4">Create New Proposal</h2>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-gray-300 mb-2">Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-gray-700 rounded p-2"
+              required
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-gray-300 mb-2">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-gray-700 rounded p-2"
+              required
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-gray-300 mb-2">Voting Duration (days)</label>
+            <input
+              type="number"
+              min="1"
+              value={deadline}
+              onChange={(e) => setDeadline(Number(e.target.value))}
+              className="w-full bg-gray-700 rounded p-2"
+              required
+            />
+          </div>
+          
+          <div className="flex justify-end space-x-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-600 rounded"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 rounded"
+            >
+              Create
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+8. Home Page
+Create src/pages/Home.tsx:
+
+tsx
+import { useState, useEffect } from 'react'
+import { ethers } from 'ethers'
+import { connectWallet, getContract } from '../utils/wallet'
+import { loadProposals } from '../utils/contract'
+import MiniVoteDAOABI from '../abi/MiniVoteDAO.json'
+import ProposalCard from '../components/ProposalCard'
+import CreateProposalModal from '../components/CreateProposalModal'
+
+const CONTRACT_ADDRESS = '0x...' // Replace with your contract address
+
+export default function Home() {
+  const [proposals, setProposals] = useState<any[]>([])
+  const [contract, setContract] = useState<ethers.Contract | null>(null)
+  const [address, setAddress] = useState<string | null>(null)
+  const [isOwner, setIsOwner] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const init = async () => {
+      const connection = await connectWallet()
+      if (connection) {
+        setAddress(connection.address)
+        const contract = getContract(CONTRACT_ADDRESS, MiniVoteDAOABI, connection.signer)
+        setContract(contract)
+        
+        // Check if user is owner
+        const owner = await contract.owner()
+        setIsOwner(connection.address.toLowerCase() === owner.toLowerCase())
+        
+        await refreshProposals(contract)
+      }
+      setLoading(false)
+    }
+    
+    init()
+  }, [])
+
+  const refreshProposals = async (contract: ethers.Contract) => {
+    const proposals = await loadProposals(contract)
+    setProposals(proposals)
+  }
+
+  const handleRefresh = async () => {
+    if (!contract) return
+    setLoading(true)
+    await refreshProposals(contract)
+    setLoading(false)
+  }
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">DAO Proposals</h2>
+        <div className="flex space-x-2">
+          <button
+            onClick={handleRefresh}
+            className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded"
+            disabled={loading}
+          >
+            Refresh
+          </button>
+          {isOwner && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded"
+            >
+              Create Proposal
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-8">Loading proposals...</div>
+      ) : proposals.length === 0 ? (
+        <div className="text-center py-8">No proposals yet</div>
+      ) : (
+        <div>
+          {proposals.map((proposal) => (
+            <ProposalCard
+              key={proposal.id}
+              proposal={proposal}
+              contract={contract}
+              isOwner={isOwner}
+              refresh={() => refreshProposals(contract!)}
+            />
+          ))}
+        </div>
+      )}
+
+      <CreateProposalModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        contract={contract}
+        refresh={() => refreshProposals(contract!)}
+      />
+    </div>
+  )
+}
+9. Add ABI File
+Create src/abi/MiniVoteDAO.json and paste your contract ABI here.
+
+10. Final Steps
+Update the CONTRACT_ADDRESS in both src/utils/contract.ts and src/pages/Home.tsx with your deployed contract address.
+
+Replace the ABI in src/abi/MiniVoteDAO.json with your contract's ABI.
+
+Make sure your Solidity contract has the expected functions:
+
+proposalCount()
+
+proposals(uint256)
+
+createProposal(string, string, uint256)
+
+vote(uint256, bool)
+
+finalizeProposal(uint256)
+
+owner()
+
+Running the Project
+Start the development server:
+
+bash
+npm run dev
+This implementation provides:
+
+MetaMask wallet connection
+
+Proposal listing with status indicators
+
+Voting functionality (Yes/No)
+
+Proposal creation (owner only)
+
+Proposal finalization (owner only)
+
+Toast notifications for transactions
+
+Dark mode styling with TailwindCSS
+
+Responsive design
+
+The UI includes:
+
+Wallet connect button in navbar
+
+Proposal cards with voting buttons
+
+Create proposal modal for owners
+
+Status indicators for each proposal
+
+Refresh button to update data
+
+New chat
